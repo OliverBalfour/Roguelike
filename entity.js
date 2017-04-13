@@ -6,6 +6,7 @@ class Entity {
 		this.y = 0;
 		this.ctx = ctx;
 		this.map = map;
+		this.visible = [];
 	}
 
 	draw () {
@@ -42,14 +43,39 @@ class Player extends Entity {
 	}
 
 	move (keymap) {
-		if(keymap[38] && this.isWalkable(0, -1))
-			this.y--;
-		if(keymap[37] && this.isWalkable(-1, 0))
-			this.x--;
-		if(keymap[40] && this.isWalkable(0, 1))
-			this.y++;
-		if(keymap[39] && this.isWalkable(1, 0))
-			this.x++;
+		let u = keymap[38],
+			d = keymap[40],
+			l = keymap[37],
+			r = keymap[39];
+
+		//Up down left right for standard movement
+		//Shift+[arrowkey]+[arrowkey] for diagonal movement
+		//ie shift+up+left is up-left diagonal
+		//While holding two arrow keys at once any further movements will be diagonal
+		if(!keymap[16]) {
+			if(u && this.isWalkable(0, -1))
+				this.y--;
+			if(d && this.isWalkable(0, 1))
+				this.y++;
+			if(l && this.isWalkable(-1, 0))
+				this.x--;
+			if(r && this.isWalkable(1, 0))
+				this.x++;
+		} else {
+			if(u && !d && l && !r && this.isWalkable(-1, -1)) {
+				this.x--;
+				this.y--;
+			} else if(u && !d && !l && r && this.isWalkable(1, -1)) {
+				this.x++;
+				this.y--;
+			} else if(!u && l && d && !r && this.isWalkable(-1, 1)) {
+				this.x--;
+				this.y++;
+			} else if(!u && d && !l && r && this.isWalkable(1, 1)) {
+				this.x++;
+				this.y++;
+			}
+		}
 
 		this.updateMapVisibility();
 		this.center();
@@ -57,22 +83,33 @@ class Player extends Entity {
 
 	updateMapVisibility () {
 
+		this.visible = [];
+
 		this.map.visible[this.y][this.x] = true;
+		this.visible.push(this.map.sPos(this.x, this.y));
 
 		this.map.visible[this.y + 1][this.x] = true;
+		this.visible.push(this.map.sPos(this.x, this.y + 1));
 		this.map.visible[this.y][this.x + 1] = true;
+		this.visible.push(this.map.sPos(this.x + 1, this.y));
 
 		this.map.visible[this.y - 1][this.x] = true;
+		this.visible.push(this.map.sPos(this.x, this.y - 1));
 		this.map.visible[this.y][this.x - 1] = true;
+		this.visible.push(this.map.sPos(this.x - 1, this.y));
 
 		this.map.visible[this.y + 1][this.x + 1] = true;
+		this.visible.push(this.map.sPos(this.x + 1, this.y + 1));
 		this.map.visible[this.y - 1][this.x - 1] = true;
+		this.visible.push(this.map.sPos(this.x - 1, this.y - 1));
 
 		this.map.visible[this.y + 1][this.x - 1] = true;
+		this.visible.push(this.map.sPos(this.x - 1, this.y + 1));
 		this.map.visible[this.y - 1][this.x + 1] = true;
+		this.visible.push(this.map.sPos(this.x + 1, this.y - 1));
 
-		//Update only the part of the map the player moved into
-		this.map.patch(mapctx, this.x - 1, this.y - 1, 3, 3);
+		//Update only the part of the map the player moved into and out of
+		this.map.patch(mapctx, this.x - 2, this.y - 2, 5, 5);
 
 	}
 

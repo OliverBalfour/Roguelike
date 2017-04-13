@@ -28,16 +28,15 @@ class Map {
 		this.tilesetLoaded = false;
 		this.tileset.onload = () => {
 			this.tilesetLoaded = true;
-			if(this.generated) {
+			if(this.generated)
 				this.start();
-				player.center();
-			}
 		}
 
 		this.data = [];
 		this.visible = [];
 		this.seed = 0;
 		this.PRNG = null;
+		this.player = null;
 
 		this.generated = false;
 
@@ -163,10 +162,6 @@ class Map {
 		//Reusing the previous stack
 		done = [];
 
-		//Serialise and deserialise a map position as a number
-		const sPos = (x, y) => y * this.w + x;
-		const dPos = serialised => {return {x: serialised % this.w, y: serialised / this.w << 0}};
-
 		const mazeFill = (rId) => {
 
 			originalRegions.push(rId);
@@ -178,28 +173,28 @@ class Map {
 					mazeEnds.shift();
 					continue;
 				}
-				let current = dPos(currents);
+				let current = this.dPos(currents);
 
 				//Sides available to expand into
 				let sides = [];
 
-				if(current.x < this.w - 3 && regions[current.y][current.x + 2] === -1 && done.indexOf(sPos(current.x + 2, current.y)) === -1){
-					sides.push([sPos(current.x + 1, current.y), sPos(current.x + 2, current.y)]);
+				if(current.x < this.w - 3 && regions[current.y][current.x + 2] === -1 && done.indexOf(this.sPos(current.x + 2, current.y)) === -1){
+					sides.push([this.sPos(current.x + 1, current.y), this.sPos(current.x + 2, current.y)]);
 				}
-				if(current.y < this.h - 3 && regions[current.y + 2][current.x] === -1 && done.indexOf(sPos(current.x, current.y + 2)) === -1){
-					sides.push([sPos(current.x, current.y + 1), sPos(current.x, current.y + 2)]);
+				if(current.y < this.h - 3 && regions[current.y + 2][current.x] === -1 && done.indexOf(this.sPos(current.x, current.y + 2)) === -1){
+					sides.push([this.sPos(current.x, current.y + 1), this.sPos(current.x, current.y + 2)]);
 				}
 
-				if(current.x > 2 && regions[current.y][current.x - 2] === -1 && done.indexOf(sPos(current.x - 2, current.y)) === -1){
-					sides.push([sPos(current.x - 1, current.y), sPos(current.x - 2, current.y)]);
+				if(current.x > 2 && regions[current.y][current.x - 2] === -1 && done.indexOf(this.sPos(current.x - 2, current.y)) === -1){
+					sides.push([this.sPos(current.x - 1, current.y), this.sPos(current.x - 2, current.y)]);
 				}
-				if(current.y > 2 && regions[current.y - 2][current.x] === -1 && done.indexOf(sPos(current.x, current.y - 2)) === -1){
-					sides.push([sPos(current.x, current.y - 1), sPos(current.x, current.y - 2)]);
+				if(current.y > 2 && regions[current.y - 2][current.x] === -1 && done.indexOf(this.sPos(current.x, current.y - 2)) === -1){
+					sides.push([this.sPos(current.x, current.y - 1), this.sPos(current.x, current.y - 2)]);
 				}
 
 				if(sides.length) {
 					let index = this.PRNG.rng(sides.length),
-						side = dPos(sides[index][0]);
+						side = this.dPos(sides[index][0]);
 					regions[side.y][side.x] = rId;
 					mazeEnds.push(sides[index][1]);
 				}
@@ -218,7 +213,7 @@ class Map {
 			for(let x = 1; x < this.w; x += 2) {
 				//Suitable for the recursive maze 
 				if(regions[y][x] === -1) {
-					mazeEnds.push(sPos(x, y));
+					mazeEnds.push(this.sPos(x, y));
 					mazeFill(regionId++);
 				}
 			}
@@ -257,7 +252,7 @@ class Map {
 
 				if(connectingRegions.length === 2) {
 					connectors.push({
-						c: sPos(x, y),
+						c: this.sPos(x, y),
 						r: connectingRegions
 					});
 				}
@@ -311,7 +306,7 @@ class Map {
 		}
 
 		const openConnector = connector => {
-			let pos = dPos(connector.c);
+			let pos = this.dPos(connector.c);
 			regions[pos.y][pos.x] = masterRoom.regionId;
 		}
 
@@ -357,7 +352,7 @@ class Map {
 					}
 
 					if(dead.length > 2)
-						deadEnds.push(sPos(x, y));
+						deadEnds.push(this.sPos(x, y));
 
 				}
 			}
@@ -365,7 +360,7 @@ class Map {
 
 		//Remove a dead end from the map, but don't update the deadEnds array so we can do things like .forEach(removeDeadEnd) safely
 		const removeDeadEnd = ends => {
-			let end = dPos(ends);
+			let end = this.dPos(ends);
 
 			regions[end.y][end.x] = -1;
 		}
@@ -402,11 +397,13 @@ class Map {
 
 		//Start game! Wooot!
 		this.generated = true;
-		if(this.tilesetLoaded) {
+		if(this.tilesetLoaded)
 			this.start();
-			player.center();
-		}
 
+	}
+
+	setPlayer (player) {
+		this.player = player;
 	}
 
 	boundingBox (a, b) {
@@ -418,30 +415,22 @@ class Map {
 
 	//Prepare the map on a canvas given
 	prepare (ctx) {
-		for(let y = 0; y < this.h; y++) {
-			for(let x = 0; x < this.w; x++) {
-				if(!this.visible[y][x]) continue;
-				ctx.drawImage(
-					this.tileset,
-
-					this.data[y][x] * this.tw, 0,
-					this.tw, this.th,
-
-					x * this.dw,
-					y * this.dh,
-					this.dw, this.dh
-				);
-			}
-		}
+		this.patch(ctx, 0, 0, this.w, this.h);
 	}
 
 	//Patch a small rectangle an already prepared version of the map on the canvas given
 	//Useful if a small portion of the map is changed slightly ie visibility changes
 
 	patch (ctx, sx, sy, pw, ph) {
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+
 		for(let y = sy; y < sy + ph; y++) {
 			for(let x = sx; x < sx + pw; x++) {
+
+				//Only draw if visible
 				if(!this.visible[y][x]) continue;
+
+				//Draw the tile
 				ctx.drawImage(
 					this.tileset,
 
@@ -452,6 +441,12 @@ class Map {
 					y * this.dh,
 					this.dw, this.dh
 				);
+
+				//If the tile isn't in the player's immediate line of sight, dull it out a little and don't
+				//display anything variable (only constant things like tile type and any items dropped on it)
+				if(this.player && this.player.visible.indexOf(this.sPos(x, y)) === -1)
+					ctx.fillRect(x * this.dw, y * this.dh, this.dw, this.dh);
+
 			}
 		}
 	}
@@ -467,6 +462,14 @@ class Map {
 		if(Map.isCollidableTile(this.data[y][x])) return false;
 
 		return true;
+	}
+
+	//Serialise and deserialise a map position as a number
+	sPos (x, y) {
+		return y * this.w + x;
+	}
+	dPos (serialised) {
+		return {x: serialised % this.w, y: serialised / this.w << 0}
 	}
 
 	static isCollidableTile (tile) {

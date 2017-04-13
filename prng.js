@@ -2,8 +2,8 @@
 
 //RNG using Math.random, DO NOT USE FOR MAP GENERATION, use PRNG instead
 
-const rng = n => Math.floor(Math.random() * n);
-const random = (min, max) => Math.floor(Math.random() * (max - min)) + min;
+const Xrng = n => Math.floor(Math.random() * n);
+const Xrandom = (min, max) => Math.floor(Math.random() * (max - min)) + min;
 
 
 //Pseudo-Random Number Generator (PRNG), uses the Linear Congruential Generator (LCG) algorithm

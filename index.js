@@ -121,7 +121,10 @@ const player = new Player(ctx, map);
 
 player.x = map.masterRoom.x + (map.masterRoom.w - 1) / 2;
 player.y = map.masterRoom.y + (map.masterRoom.h - 1) / 2;
+player.updateMapVisibility();
+player.center();
 
+map.setPlayer(player);
 
 mapc.width = map.w * map.dw;
 mapc.height = map.h * map.dh;

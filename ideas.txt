@@ -1,1 +1,116 @@
-random number god
+
+Random number god easter egg (play on acronym RNG)
+
+Roguelike features chosen
+ - open source
+ - item features (+1 mace etc)
+ - confusion/hallucination/blindness etc
+ - huge cave network, non linear, different 'zones,' underground cities etc
+ - fortune cookies
+ - identification
+ - rings/amulets
+ - kbd and mouse support, game can be played with either alone
+ - loads of monsters and items
+ - message log (^P to see)
+ - only one player, no pets/companions
+ - permadeath, can be prevented by a super rare item and some items can only set you back X levels upon death
+ - read, quaff zap commands
+ - pseudorandom
+ - secret doors and traps, with the ability to be warned if proficient in some abilities
+ - turn based
+ - rpg elements
+ - item interactions, advanced if I have time
+ - anything can be weaponised
+ - 100 high scores list
+ - stupidity caused deaths
+ - really fast, 30fps on potatoes from 10 years ago with a ton of bloatware
+
+Bandlike features chosen
+ - Lots of items
+ - Set your own pace - Sorta, there'll be a little pressure but nothing crazy.
+ - Surface level town - Towns are cool when they're not as simple as Angband's town. The town will basically be a tutorial interface that allows the character to choose their class by buying a kind of weapon and becoming proficient in it, choose their name as they enter the town through the town gates and get checked by the town guard etc. It'll also have some houses and things that don't have anything much in them beyond tutorial stuff, as well as an off limits garden-like fields thing off to the side.
+
+Hacklike features chosen
+ - Persistent levels
+ - Inventory size - Reasonably lax with strength stats and special items upgrading size. Because of persistent levels you can use peaceful levels as storage facilities.
+ - Shallow(ish) power curve (factor of 10-20) - A good balance between too sluggish and too overpowered
+ - Spellcasters don't carry spellbooks around
+
+
+Other bandlike features
+ - No level memory - Sounds crap
+ - Steep power curve (factor of 100-200) - Sounds waaay too overpowered
+
+Other hacklike features
+ - Complex interactions of properties - If I can be bothered.
+ - Small levels - Nup, varying shapes and sizes are more fun.
+ - Identification by use - Nah, identifying items is a pain. There'll still be cursed items and basic identification though.
+ - No town - I like towns, just make them interesting, well signed (saves time wandering around), and pretty (Well, for ascii style art.)
+
+
+
+
+AI - Finite State Machines (FSMs)
+
+eg from RogueBasin:
+
+	 +-----------------+    +---------------+
+	 | player runs away|    | healthy again |
+	 |                 v    v               |
++-- ATTACK        APPROACH PLAYER       RUN AWAY
+|    ^                 |                    ^
+|    |  close enough   |                    |
+|    +-----------------+   likely to die    |
++-------------------------------------------+
+
+
+Store as a 2D array with null or bool returning functions
+
+State: attack
+
+Go through row
+
+Attack - n/a
+Run - is the monster likely to die? If so, break (giving this higher priority than the next possible states) and change state
+Approach - is player running away? If so, break and change state
+
+Rinse and repeat. Columns closer to the left are favoured more, so a suicidal crazed monster might approach and attack rather than run away at the cost of its life, whereas a soldier might attempt to flee first.
+
+				ATTACK			RUN						APPROACH
+ -> ATTACK		n/a				Likely to die			Player runs away
+	RUN			Close enough	n/a						Healthy again
+	APPROACH		null			null					n/a
+
+To make enemies follow the player, use LoS algorithms like Bresenham's Line Algorithm (see ./bresenham.js) when they're visible. Otherwise it's a tad more complex.
+
+Every time an entity goes onto a tile, the old tile gets a 'scent' value applied to it of 1 with a pointer back to the entity
+Every turn, each scent for each entity on each tile is incremented by 1
+Entities tracking other entities (ie monsters following the player) will have a certain scent threshold that they can track
+Monsters can detect scent values on tiles in a square of 9 around them (maybe some can smell further or not at all)
+The lower the scent value, the more likely they are to follow it
+Each scent will also have a entity type priority applied for each entity's personal preferences (ie for a demon subtract 3 from player scents (more likely to follow), add 5 to cave bat scents (much less likely to follow), ignore fellow demons (don't follow or attack) etc)
+Also, monsters who have engaged battle with an entity will ignore the scent of any others until those others attack them.
+
+As a fallback for those who can't smell well, if they saw a player more recently than any scent trails lead, they will track down the player's ghost position and randomly wander until they either get bored (property of each entity, threshold at which they sleep,) see the player again or get back onto the scent trail.
+
+Some special monsters may use Dijkstra pathfinding using spells/magic or something similar, or have a dumbed down version to represent their 'hearing'.
+
+Quick representation of Dijkstra from RogueBasin
+
+There are 2 lists: OPEN and CLOSED. The OPEN list stores a list of tiles which are possible candidates for a shortest path, and the CLOSED list stores the tiles we've been through, so they aren't unnecessarily repeated. The "movement cost" is the number of steps the monster has to take to get to that tile, walking on the path associated with that tile. New tiles are only added to the OPEN list if they don't exist, and tiles only replace other tiles if they have shorter paths.
+
+Find the destination tile (where the player is).
+Put the starting tile (where the monster is) on the OPEN list. It's starting cost is zero.
+While the OPEN list is not empty, and a path isn't found:
+	Get the tile from the OPEN list with the lowest movement cost. Let's call it the CURRENT tile.
+	If this is the destination tile, the path has been found. Exit the loop now.
+	Find the tiles to which you can immediately walk to from this tile. These would the tiles around this tile, which don't contain obstacles. Call these tiles "successors".
+	For each successor:
+		Set the successor's parent to the CURRENT tile.
+		Set the successor's movement cost to the parent's movement cost, plus 1 (for diagonal movements, add more if it takes longer to go diagonally in your game), IF not in CLOSED AND successor.movementCost < parent.movementCost + 1, ELSE skip the rest of this iteration of the loop (ie continue)
+		Add the successor to the OPEN list.
+	Delete the CURRENT tile from the OPEN list, and put it on the CLOSED list.
+If the while loop has been ended because the OPEN list is empty, there is no path.
+If this is not the case, the last tile pulled from the OPEN list, and its parents, describe the shortest path (in reverse order - i.e. from the player to the monster - you should read the list of tiles back to front).
+
+For monster variability and progression, have a gene pool, ie only the fittest aren't killed by you and so only the fittest breed. 'genes' or buffs get applied to an enemy type as you kill more of them.
