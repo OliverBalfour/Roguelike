@@ -47,4 +47,14 @@ class PRNG {
 		return Math.floor(this.next() * (max - min)) + min;
 	}
 
+	//Returns the next float as a  pseudorandom whole number
+	static rng (n) {
+		return Math.floor(Math.random() * n);
+	}
+
+	//Returns the next float as a pseudorandom whole number in a range min-max
+	static range (min, max) {
+		return Math.floor(Math.random() * (max - min)) + min;
+	}
+
 }

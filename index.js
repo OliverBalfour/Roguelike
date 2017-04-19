@@ -33,8 +33,10 @@ document.addEventListener('keydown', (e) => {
 	let k = e.which || e.keyCode;
 	client.keys[k] = 0;
 	client.ktimers[k] = -1;
-	if(k === 188) {
-		player.staircaseUp();
+	if(client.keys[16] && k === 190) {
+		map.player.staircaseDown();
+	} else if(client.keys[16] && k === 188) {
+		map.player.staircaseUp();
 	}
 });
 document.addEventListener('keyup', (e) => {
@@ -64,13 +66,13 @@ const loop = () => {
 			client.keys[i] += time.delta;
 			if(Math.floor(client.keys[i] / 300) > client.ktimers[i]){
 				client.ktimers[i] += 300;
-				player.handleKeystroke(client.keys, i);
+				map.player.handleKeystroke(client.keys, i);
 			}
 		}
 	}
 
-	map.draw(mapc);
-	player.draw();
+	map.draw();
+	map.player.draw();
 
 	//Red guide dot in the middle of the screen
 	//ctx.fillStyle = 'red';
@@ -81,7 +83,7 @@ const loop = () => {
 	ctx.fillRect(0, 0, 120, 30);
 	ctx.font = '12px verdana';
 	ctx.fillStyle = 'white';
-	ctx.fillText(Math.floor(1000 / time.delta) + ' fps, ' + Math.floor(time.fps) + ' stable.', 10, 20);
+	ctx.fillText(Math.floor(1000 / time.delta) + ' fps, ' + Math.floor(time.fps) + ' stable, level ' + WorldTree.level, 10, 20);
 
 }
 
@@ -104,36 +106,44 @@ const time = {
 }
 
 
-const map = new Map(ctx, 42 * 2 + 1, 42 * 2 + 1, loop);
+const WorldTree = new Yggdrasil();
 
-map.generate(map.w, map.h, {
-	minRoomSize: 5,
-	maxRoomsSize: 13,
-	minRooms: 20,
-	maxRooms: 25,
-	connectorOpenChance: 10,
-	numDeadEnds: 100000,
-	seed: 5
-});
-
-
-const player = new Player(ctx, map);
-
-player.x = map.masterRoom.x + (map.masterRoom.w - 1) / 2;
-player.y = map.masterRoom.y + (map.masterRoom.h - 1) / 2;
-player.updateMapVisibility();
-player.center();
-
-map.setPlayer(player);
+const map = new Map(WorldTree, ctx, mapctx, 42 * 2 + 1, 42 * 2 + 1, loop);
 
 mapc.width = map.w * map.dw;
 mapc.height = map.h * map.dh;
 
 
-map.prepare(mapctx);
+//Full on mazed up map with a load of rooms everywhere.
+const mapGenSettings = {
+	minRoomSize: 5,
+	maxRoomsSize: 13,
+	minRooms: 20,
+	maxRooms: 25,
+	connectorOpenChance: 10,
+	numDeadEnds: 100000
+};
+map.generate(mapGenSettings);
+
+WorldTree.tree = new YgNode(null, map.stairs, map.seed, mapGenSettings);
+WorldTree.currentNode - WorldTree.tree;
+
+/*
+//Less mazelike map with long windy corridoors going between a small amount of rooms
+map.generate(map.w, map.h, {
+	minRoomSize: 5,
+	maxRoomsSize: 13,
+	minRooms: 5,
+	maxRooms: 8,
+	connectorOpenChance: 0,
+	numDeadEnds: 100000
+});
+*/
+
+map.prepare();
 
 
 const cheats = {
-	noWalls: () => {map.isWalkable = () => true},
+	noWalls: () => {map.isCollidableTile = () => false},
 	magicMap: () => {map.visible.forEach((arr, i) => {map.visible[i] = arr.map(n => true)}); map.prepare(mapctx)}
 }

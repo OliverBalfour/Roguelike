@@ -1,10 +1,20 @@
 
 class Map {
 
-	constructor (ctx, w, h, start) {
+	constructor (yggdrasil, ctx, mapctx, w, h, start) {
 
+		//WorldTree
+		this.yggdrasil = yggdrasil;
+
+		//Render context
 		this.ctx = ctx;
+
+		//Map preparation context
+		this.mapctx = mapctx;
+
+		//Callback on generation + tileset load
 		this.start = start;
+
 
 		//Base pos
 		this.bx = 0;
@@ -22,6 +32,7 @@ class Map {
 		this.w = w;
 		this.h = h;
 
+
 		//Tileset
 		this.tileset = new Image();
 		this.tileset.src = 'test.png';
@@ -32,26 +43,37 @@ class Map {
 				this.start();
 		}
 
+		//Map core
 		this.data = [];
 		this.visible = [];
+		this.rooms = [];
+		this.stairs = [];
 		this.seed = 0;
 		this.PRNG = null;
-		this.player = null;
 
+		//Player/client
+		this.player = new Player(this.ctx, this);
+
+		//Map generated flag
 		this.generated = false;
 
 	}
 
+
+	//Map generation function
+
 	//options has a bunch of cool tweaking properties
+	//w, h,
 	//minRoomSize, maxRoomSize, minRooms, maxRooms,
 	//connectorOpenChance, numDeadEnds (to remove,)
-	//and seed (a float)
-	generate (w, h, options) {
+	//seed (a float,) and stairCarveChance
 
-		this.w = w;
-		this.h = h;
+	generate (options) {
 
 		options = typeof options === 'object' ? options : {};
+
+		this.w = typeof options.w === 'number' ? options.w : this.w;
+		this.h = typeof options.h === 'number' ? options.h : this.h;
 
 		this.seed = typeof options.seed === 'number' ? options.seed : Math.random();
 		this.PRNG = new PRNG(this.seed);
@@ -178,10 +200,16 @@ class Map {
 				//Sides available to expand into
 				let sides = [];
 
-				if(current.x < this.w - 3 && regions[current.y][current.x + 2] === -1 && done.indexOf(this.sPos(current.x + 2, current.y)) === -1){
+				if(
+					current.x < this.w - 3 && regions[current.y][current.x + 2] === -1 &&
+					done.indexOf(this.sPos(current.x + 2, current.y)) === -1
+				){
 					sides.push([this.sPos(current.x + 1, current.y), this.sPos(current.x + 2, current.y)]);
 				}
-				if(current.y < this.h - 3 && regions[current.y + 2][current.x] === -1 && done.indexOf(this.sPos(current.x, current.y + 2)) === -1){
+				if(
+					current.y < this.h - 3 && regions[current.y + 2][current.x] === -1 &&
+					done.indexOf(this.sPos(current.x, current.y + 2)) === -1
+				){
 					sides.push([this.sPos(current.x, current.y + 1), this.sPos(current.x, current.y + 2)]);
 				}
 
@@ -265,7 +293,6 @@ class Map {
 		//This master room's region will serve as a master region, which the whole map will be filled with by the end of the process
 
 		const masterRoom = this.rooms[this.PRNG.rng(this.rooms.length)];
-		this.masterRoom = masterRoom;
 
 		//Used in conjunction with the originalRegions array
 		let overwrittenRegions = [];
@@ -385,14 +412,44 @@ class Map {
 		}
 
 
+
+		//Set up a spawn point in the level with an up staircase underneath
+		this.player.x = masterRoom.x + PRNG.rng(masterRoom.w);
+		this.player.y = masterRoom.y + PRNG.rng(masterRoom.h);
+
+		this.stairs.push({p: this.sPos(this.player.x, this.player.y), tile: 2});
+
+		this.player.updateMapVisibility();
+		this.player.center();
+
+
 		//To finish off we overwrite this.data
+		//And in the process add a few downward staircases
+		//Such snek
+
+		let stairCarveChance = typeof options.stairCarveChance === 'number' ? options.stairCarveChance : 0.002;
+
 		for(let y = 0; y < this.h; y++) {
 			for(let x = 0; x < this.w; x++) {
+
 				this.data[y][x] = regions[y][x] >= 0 ? 5 : this.data[y][x];
+
+				//If the tile is a floor tile at lest 5 tiles away from the up staircase then it has a chance
+				//of becoming a down staircase
+				if(
+					this.data[y][x] === 5 &&
+					this.PRNG.next() < stairCarveChance &&
+					Math.hypot((this.stairs[0].p % this.w) - x, (this.stairs[0].p / this.w << 0) - y) >= 5
+				) {
+					this.stairs.push({p: this.sPos(x, y), tile: 3});
+					this.data[y][x] = 3;
+				}
+
+				if(this.stairs[0].p === this.sPos(x, y))
+					this.data[y][x] = this.stairs[0].tile;
+
 			}
 		}
-
-		this.data[masterRoom.y + (masterRoom.h - 1) / 2][masterRoom.x + (masterRoom.w - 1) / 2] = 2;
 
 
 		//Start game! Wooot!
@@ -400,10 +457,6 @@ class Map {
 		if(this.tilesetLoaded)
 			this.start();
 
-	}
-
-	setPlayer (player) {
-		this.player = player;
 	}
 
 	boundingBox (a, b) {
@@ -414,21 +467,27 @@ class Map {
 	}
 
 	//Prepare the map on a canvas given
-	prepare (ctx) {
-		this.patch(ctx, 0, 0, this.w, this.h);
+	prepare () {
+		this.mapctx.clearRect(0, 0, this.mapctx.canvas.width, this.mapctx.canvas.height);
+		this.patch(this.mapctx, 0, 0, this.w, this.h);
 	}
 
 	//Patch a small rectangle an already prepared version of the map on the canvas given
 	//Useful if a small portion of the map is changed slightly ie visibility changes
 
 	patch (ctx, sx, sy, pw, ph) {
+
+		sx = sx < 0 ? 0 : sx;
+		sy = sy < 0 ? 0 : sy;
+		pw = pw > this.w ? this.w : pw;
+		ph = ph > this.h ? this.h : ph;
+
 		ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
 
 		for(let y = sy; y < sy + ph; y++) {
 			for(let x = sx; x < sx + pw; x++) {
 
-				//Only draw if visible
-				if(!this.visible[y][x]) continue;
+				if(!this.visible[y] || !this.visible[y][x]) continue;
 
 				//Draw the tile
 				ctx.drawImage(
@@ -451,15 +510,15 @@ class Map {
 		}
 	}
 
-	draw (canvas) {
-		this.ctx.drawImage(canvas, this.bx, this.by)
+	draw () {
+		this.ctx.drawImage(this.mapctx.canvas, this.bx, this.by);
 	}
 
 	isWalkable (x, y) {
 		if(x < 0 || y < 0) return false;
 		if(x >= this.w || y >= this.h) return false;
 
-		if(Map.isCollidableTile(this.data[y][x])) return false;
+		if(this.isCollidableTile(this.data[y][x])) return false;
 
 		return true;
 	}
@@ -472,7 +531,7 @@ class Map {
 		return {x: serialised % this.w, y: serialised / this.w << 0}
 	}
 
-	static isCollidableTile (tile) {
+	isCollidableTile (tile) {
 		return tile < 2;
 	}
 

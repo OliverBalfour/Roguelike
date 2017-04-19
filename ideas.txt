@@ -114,3 +114,27 @@ If the while loop has been ended because the OPEN list is empty, there is no pat
 If this is not the case, the last tile pulled from the OPEN list, and its parents, describe the shortest path (in reverse order - i.e. from the player to the monster - you should read the list of tiles back to front).
 
 For monster variability and progression, have a gene pool, ie only the fittest aren't killed by you and so only the fittest breed. 'genes' or buffs get applied to an enemy type as you kill more of them.
+
+
+
+WorldTree
+
+
+	   Town lvl
+	  /        \
+	D1A        D1B
+   /   \      /   \
+  D2A  D2B  D2C   D2D
+
+
+typdef YgNode : {
+	parent: YgNode OR null (if root node),
+	seed: int,
+	settings: { map generator settings : object },
+	stairs: [
+		{
+			pos: serialised map position : int,
+			node: { YgNode : object }
+		}
+	]
+}

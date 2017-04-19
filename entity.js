@@ -113,13 +113,29 @@ class Player extends Entity {
 
 	}
 
+	//Check if a staircase going down is under the player's feet, and if so, go down
+	staircaseDown () {
+		if(this.map.data[this.y][this.x] === 3) {
+
+			this.map.generate(this.map.w, this.map.h, mapGenSettings);
+			this.map.yggdrasil.addNode(
+				this.map.yggdrasil.currentNode,
+				this.map.sPos(this.x, this.y),
+				this.map.stairs, map.seed,
+				mapGenSettings
+			);
+
+			this.updateMapVisibility();
+			this.map.prepare();
+		}
+	}
+
 	//Check if a staircase going up is under the player's feet, and if so, go up
 	staircaseUp () {
-		if(map.data[player.y][player.x] === 2) {
-			map.PRNG = new PRNG();
-			map.generate(map.w, map.h);
-			map.visible.forEach((arr, i) => {map.visible[i] = arr.map(n => true)})
-			map.prepare(mapctx);
+		if(this.map.data[this.y][this.x] === 2) {
+			this.map.generate(this.map.w, this.map.h);
+			this.updateMapVisibility();
+			this.map.prepare();
 		}
 	}
 
