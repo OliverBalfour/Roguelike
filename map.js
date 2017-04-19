@@ -1,7 +1,7 @@
 
 class Map {
 
-	constructor (yggdrasil, ctx, mapctx, w, h, start) {
+	constructor (yggdrasil, ctx, mapctx, w, h) {
 
 		//WorldTree
 		this.yggdrasil = yggdrasil;
@@ -11,10 +11,6 @@ class Map {
 
 		//Map preparation context
 		this.mapctx = mapctx;
-
-		//Callback on generation + tileset load
-		this.start = start;
-
 
 		//Base pos
 		this.bx = 0;
@@ -37,67 +33,122 @@ class Map {
 		this.tileset = new Image();
 		this.tileset.src = 'test.png';
 		this.tilesetLoaded = false;
-		this.tileset.onload = () => {
-			this.tilesetLoaded = true;
-			if(this.generated)
-				this.start();
-		}
 
 		//Map core
+
 		this.data = [];
+
 		this.visible = [];
+
+		this.regions = [];this.temp={}
 		this.rooms = [];
 		this.stairs = [];
+
 		this.seed = 0;
 		this.PRNG = null;
 
 		//Player/client
 		this.player = new Player(this.ctx, this);
 
-		//Map generated flag
-		this.generated = false;
-
 	}
 
 
-	//Map generation function
-
-	//options has a bunch of cool tweaking properties
-	//w, h,
-	//minRoomSize, maxRoomSize, minRooms, maxRooms,
-	//connectorOpenChance, numDeadEnds (to remove,)
-	//seed (a float,) and stairCarveChance
+	/* 
+	 * Map Generation Function
+	 * Handles everything related to map generation
+	 * 
+	 * options - object
+	 *   bool generate*, generate the map? default true
+	 *   if !generate:
+	 *     2D array data, map data to replace the map with
+	 *   else:
+	 *     int w, map width
+	 *     int h, map height
+	 *     object rooms*, room options, defaults to no rooms (falsy value)
+	 *       int minSize, min room dimensions
+	 *       int maxSize, max room dimensions
+	 *       int minRooms, min no. of rooms, no of rooms is rng(minRooms, maxRooms)
+	 *       int maxRooms*, max no. of rooms, defaults to minRooms
+	 *     string corridoors, can be 'maze' or 'corridoor', indicates how to connect regions
+	 *     int numDeadEnds, number of dead ends to cut back (typically used with corridoors === 'maze')
+	 *     decimal connectorOpenChance, the chance of a wall touching two regions opening and becoming a doorway
+	 *       (at least one connector will open)
+	 *     decimal seed*, seed for the map generation engine, defaults to Math.random()
+	 *     decimal stairCarveChance, chance of an empty floor tile becoming a downward staircase
+	 *     float minStairDistance, the closest a staircase can be to another in tiles
+	 */
 
 	generate (options) {
 
 		options = typeof options === 'object' ? options : {};
 
+		//Are we actually generating a new map or reusing an existing one?
+		if(options.generate === false) {
+			this.w = options.data[0].length;
+			this.h = options.data.length;
+			this.data = options.data;
+			return;
+		}
+
+		//Map dimensions
 		this.w = typeof options.w === 'number' ? options.w : this.w;
 		this.h = typeof options.h === 'number' ? options.h : this.h;
 
+		//Map randomness source
 		this.seed = typeof options.seed === 'number' ? options.seed : Math.random();
 		this.PRNG = new PRNG(this.seed);
 
 		//Initialise this.data and this.visible
-		//this.visible just contains booleans, self explanatory usage
+		//this.data is map data
+		//this.regions indicates what region each tile is part of
+		//this.visible indicates whether the player has seen map tiles
 		for(let y = 0; y < this.h; y++) {
 			this.data[y] = [];
+			this.regions[y] = [];
 			this.visible[y] = [];
 			for(let x = 0; x < this.w; x++) {
 				this.data[y][x] = 0;
+				this.regions[y][x] = -1;
 				this.visible[y][x] = false;
 			}
 		}
 
+		//Region ids array to track when to stop overwriting regions
+		this.originalRegions = [];
+
+		if(options.rooms)
+			this.generateRooms(options.rooms);
+
+		if(options.corridoors === 'maze')
+			this.generateMaze(options);
+
+		this.connectRegions(options);
+
+		this.removeDeadEnds(options);
+
+		//Set up a spawn point in the level
+		if(options.rooms) {
+			let startRoom = this.rooms[PRNG.srng(this.rooms.length)];
+			this.player.x = startRoom.x + PRNG.srng(startRoom.w);
+			this.player.y = startRoom.y + PRNG.srng(startRoom.h);
+		}
+
+		this.buildMapData(options);
+
+		this.addStaircases(options);
+
+		this.player.updateMapVisibility();
+		this.player.center();
+
+	}
+
+	generateRooms (options) {
 
 		this.rooms = [];
 
-		//Region ids array to track when to stop overwriting regions
-		let originalRegions = [];
-
 		//Min and max dimensions of an empty room, not including walls
-		let minRoomSize = options.minRoomSize || 7,
-			maxRoomSize = options.maxRoomSize || 15;
+		let minRoomSize = options.minSize || 7,
+			maxRoomSize = options.maxSize || 15;
 
 		//Generate a random amount of rooms of random sizes and random positions within the map
 		//Rooms must have an odd number width and odd number positions to work with the maze
@@ -122,7 +173,7 @@ class Map {
 
 			this.rooms.push(room);
 
-			originalRegions.push(n);
+			this.originalRegions.push(n);
 
 		}
 
@@ -152,27 +203,19 @@ class Map {
 		//Each room forms its own region, disconnected from every other region
 		//We create another 2D array like this.data that contains distinct region IDs
 		//-1 means there is no region; ie walls
-		//The aim is to unify the regions, so the regions variable doesn't have to be public
-
-		let regions = [];
-
-		//Set up the regions array
-		for(let y = 0; y < this.h; y++) {
-			regions[y] = [];
-			for(let x = 0; x < this.w; x++) {
-				regions[y][x] = -1;
-			}
-		}
 
 		//Add rooms to the regions array
 		for(let i = 0; i < this.rooms.length; i++) {
 			for(let y = 0; y < this.rooms[i].h; y++) {
 				for(let x = 0; x < this.rooms[i].w; x++){
-					regions[this.rooms[i].y + y][this.rooms[i].x + x] = this.rooms[i].regionId;
+					this.regions[this.rooms[i].y + y][this.rooms[i].x + x] = this.rooms[i].regionId;
 				}
 			}
 		}
 
+	}
+
+	generateMaze (options) {
 
 		//Now we fill the remaining space on the map with a maze
 		//Basically a randomised flood fill that goes one way at a time and generates a 'perfect' maze
@@ -180,13 +223,11 @@ class Map {
 		//doors connecting rooms.
 
 		let mazeEnds = [];
-
-		//Reusing the previous stack
-		done = [];
+		let done = [];
 
 		const mazeFill = (rId) => {
 
-			originalRegions.push(rId);
+			this.originalRegions.push(rId);
 
 			while(mazeEnds.length) {
 
@@ -201,33 +242,33 @@ class Map {
 				let sides = [];
 
 				if(
-					current.x < this.w - 3 && regions[current.y][current.x + 2] === -1 &&
+					current.x < this.w - 3 && this.regions[current.y][current.x + 2] === -1 &&
 					done.indexOf(this.sPos(current.x + 2, current.y)) === -1
 				){
 					sides.push([this.sPos(current.x + 1, current.y), this.sPos(current.x + 2, current.y)]);
 				}
 				if(
-					current.y < this.h - 3 && regions[current.y + 2][current.x] === -1 &&
+					current.y < this.h - 3 && this.regions[current.y + 2][current.x] === -1 &&
 					done.indexOf(this.sPos(current.x, current.y + 2)) === -1
 				){
 					sides.push([this.sPos(current.x, current.y + 1), this.sPos(current.x, current.y + 2)]);
 				}
 
-				if(current.x > 2 && regions[current.y][current.x - 2] === -1 && done.indexOf(this.sPos(current.x - 2, current.y)) === -1){
+				if(current.x > 2 && this.regions[current.y][current.x - 2] === -1 && done.indexOf(this.sPos(current.x - 2, current.y)) === -1){
 					sides.push([this.sPos(current.x - 1, current.y), this.sPos(current.x - 2, current.y)]);
 				}
-				if(current.y > 2 && regions[current.y - 2][current.x] === -1 && done.indexOf(this.sPos(current.x, current.y - 2)) === -1){
+				if(current.y > 2 && this.regions[current.y - 2][current.x] === -1 && done.indexOf(this.sPos(current.x, current.y - 2)) === -1){
 					sides.push([this.sPos(current.x, current.y - 1), this.sPos(current.x, current.y - 2)]);
 				}
 
 				if(sides.length) {
 					let index = this.PRNG.rng(sides.length),
 						side = this.dPos(sides[index][0]);
-					regions[side.y][side.x] = rId;
+					this.regions[side.y][side.x] = rId;
 					mazeEnds.push(sides[index][1]);
 				}
 
-				regions[current.y][current.x] = rId;
+				this.regions[current.y][current.x] = rId;
 				done.push(currents);
 				mazeEnds.shift();
 
@@ -240,13 +281,16 @@ class Map {
 		for(let y = 1; y < this.h; y += 2) {
 			for(let x = 1; x < this.w; x += 2) {
 				//Suitable for the recursive maze 
-				if(regions[y][x] === -1) {
+				if(this.regions[y][x] === -1) {
 					mazeEnds.push(this.sPos(x, y));
 					mazeFill(regionId++);
 				}
 			}
 		}
 
+	}
+
+	connectRegions (options) {
 
 		//Now we iterate through tiles to find ones with the following properties
 		// They are a wall without a region
@@ -258,21 +302,21 @@ class Map {
 		for(let y = 0; y < this.h; y++) {
 			for(let x = 0; x < this.w; x++) {
 
-				if(regions[y][x] !== -1) continue;
+				if(this.regions[y][x] !== -1) continue;
 
 				let connectingRegions = [];
 
-				if(x < this.w - 1 && connectingRegions.indexOf(regions[y][x + 1]) === -1) {
-					connectingRegions.push(regions[y][x + 1]);
+				if(x < this.w - 1 && connectingRegions.indexOf(this.regions[y][x + 1]) === -1) {
+					connectingRegions.push(this.regions[y][x + 1]);
 				}
-				if(y < this.h - 1 && connectingRegions.indexOf(regions[y + 1][x]) === -1) {
-					connectingRegions.push(regions[y + 1][x]);
+				if(y < this.h - 1 && connectingRegions.indexOf(this.regions[y + 1][x]) === -1) {
+					connectingRegions.push(this.regions[y + 1][x]);
 				}
-				if(x > 0 && connectingRegions.indexOf(regions[y][x - 1]) === -1) {
-					connectingRegions.push(regions[y][x - 1]);
+				if(x > 0 && connectingRegions.indexOf(this.regions[y][x - 1]) === -1) {
+					connectingRegions.push(this.regions[y][x - 1]);
 				}
-				if(y > 0 && connectingRegions.indexOf(regions[y - 1][x]) === -1) {
-					connectingRegions.push(regions[y - 1][x]);
+				if(y > 0 && connectingRegions.indexOf(this.regions[y - 1][x]) === -1) {
+					connectingRegions.push(this.regions[y - 1][x]);
 				}
 
 				if(connectingRegions.includes(-1))
@@ -289,12 +333,12 @@ class Map {
 		}
 
 
-		//Now we need to randomly choose a master room
-		//This master room's region will serve as a master region, which the whole map will be filled with by the end of the process
+		//Now we need to randomly choose a master region
+		//The whole map will be filled with this region by the end of the process
 
-		const masterRoom = this.rooms[this.PRNG.rng(this.rooms.length)];
+		this.masterRegion = this.originalRegions[this.PRNG.rng(this.rooms.length)];
 
-		//Used in conjunction with the originalRegions array
+		//Used in conjunction with the remainingRegions array
 		let overwrittenRegions = [];
 
 		//Find all connectors connecting to the master region
@@ -302,7 +346,7 @@ class Map {
 			let cns = [];
 
 			for(let i = 0; i < connectors.length; i++) {
-				if(connectors[i].r.indexOf(masterRoom.regionId) !== -1) {
+				if(connectors[i].r.indexOf(this.masterRegion) !== -1) {
 					cns.push(connectors[i]);
 				}
 			}
@@ -310,21 +354,21 @@ class Map {
 			return cns;
 		}
 
-		//Percentage, whole number
-		let connectorOpenChance = typeof options.connectorOpenChance === 'number' ? options.connectorOpenChance : 5;
+		//Float
+		let connectorOpenChance = typeof options.connectorOpenChance === 'number' ? options.connectorOpenChance : 0.05;
 
 		//Update connector's connecting regions as they are overwritten by the main region, and delete them if they no
 		//longer connect separate regions, giving them a 5% chance of opening up regardless
 		const updateConnectorRegions = () => {
 			for(let i = connectors.length - 1; i >= 0; i--) {
 				if(overwrittenRegions.indexOf(connectors[i].r[0]) !== -1) {
-					connectors[i].r[0] = masterRoom.regionId;
+					connectors[i].r[0] = this.masterRegion;
 				}
 				if(overwrittenRegions.indexOf(connectors[i].r[1]) !== -1) {
-					connectors[i].r[1] = masterRoom.regionId;
+					connectors[i].r[1] = this.masterRegion;
 				}
 				if(connectors[i].r[0] === connectors[i].r[1]) {
-					if(this.PRNG.rng(100) < connectorOpenChance)
+					if(this.PRNG.next() < connectorOpenChance)
 						openConnector(connectors[i]);
 
 					connectors.splice(i, 1);
@@ -334,21 +378,24 @@ class Map {
 
 		const openConnector = connector => {
 			let pos = this.dPos(connector.c);
-			regions[pos.y][pos.x] = masterRoom.regionId;
+			this.regions[pos.y][pos.x] = this.masterRegion;
 		}
 
 		//Note that the regions array does not get updated, you can assume that at the end of this loop it is redunant
 		//as all of the regions have been overwritten by the master region
-		while(originalRegions.length - 1 > overwrittenRegions.length) {
+		while(this.originalRegions.length - 1 > overwrittenRegions.length) {
 			let cns = findConnectors();
 			if(!cns.length) break;
 			let connector = cns[this.PRNG.rng(cns.length)];
-			overwrittenRegions.push( connector.r.filter(n => n !== masterRoom.regionId)[0] );
+			overwrittenRegions.push( connector.r.filter(n => n !== this.masterRegion)[0] );
 			openConnector(connector);
 			updateConnectorRegions();
 		}
 
- 
+	}
+
+	removeDeadEnds (options) {
+
 		//Now, we replace a certain number of dead end tiles with walls to make the map less of a hardcore maze
 		//A dead end tile is any tile which has only one walkable neighbour
 		//regionId -1 is used for walls, so we use that
@@ -365,17 +412,17 @@ class Map {
 
 					let dead = [];
 
-					if(x < this.w - 1 && regions[y][x + 1] === -1) {
-						dead.push(regions[y][x + 1]);
+					if(x < this.w - 1 && this.regions[y][x + 1] === -1) {
+						dead.push(this.regions[y][x + 1]);
 					}
-					if(y < this.h - 1 && regions[y + 1][x] === -1) {
-						dead.push(regions[y + 1][x]);
+					if(y < this.h - 1 && this.regions[y + 1][x] === -1) {
+						dead.push(this.regions[y + 1][x]);
 					}
-					if(x > 0 && regions[y][x - 1] === -1) {
-						dead.push(regions[y][x - 1]);
+					if(x > 0 && this.regions[y][x - 1] === -1) {
+						dead.push(this.regions[y][x - 1]);
 					}
-					if(y > 0 && regions[y - 1][x] === -1) {
-						dead.push(regions[y - 1][x]);
+					if(y > 0 && this.regions[y - 1][x] === -1) {
+						dead.push(this.regions[y - 1][x]);
 					}
 
 					if(dead.length > 2)
@@ -389,7 +436,7 @@ class Map {
 		const removeDeadEnd = ends => {
 			let end = this.dPos(ends);
 
-			regions[end.y][end.x] = -1;
+			this.regions[end.y][end.x] = -1;
 		}
 
 		//
@@ -411,51 +458,60 @@ class Map {
 			}
 		}
 
+	}
 
+	buildMapData (options) {
+		for(let y = 0; y < this.h; y++) {
+			for(let x = 0; x < this.w; x++) {
+				this.data[y][x] = this.regions[y][x] >= 0 ? 5 : this.data[y][x];
+			}
+		}
+	}
 
-		//Set up a spawn point in the level with an up staircase underneath
-		this.player.x = masterRoom.x + PRNG.rng(masterRoom.w);
-		this.player.y = masterRoom.y + PRNG.rng(masterRoom.h);
+	addStaircases (options) {
 
-		this.stairs.push({p: this.sPos(this.player.x, this.player.y), tile: 2});
+		//Add a few downward staircases
 
-		this.player.updateMapVisibility();
-		this.player.center();
-
-
-		//To finish off we overwrite this.data
-		//And in the process add a few downward staircases
-		//Such snek
-
-		let stairCarveChance = typeof options.stairCarveChance === 'number' ? options.stairCarveChance : 0.002;
+		let stairCarveChance = typeof options.stairCarveChance === 'number' ? options.stairCarveChance : 0.0015;
+		let minStairDistance = typeof options.minStairDistance === 'number' ? options.minStairDistance : 5;
 
 		for(let y = 0; y < this.h; y++) {
 			for(let x = 0; x < this.w; x++) {
 
-				this.data[y][x] = regions[y][x] >= 0 ? 5 : this.data[y][x];
+				this.data[y][x] = this.regions[y][x] >= 0 ? 5 : this.data[y][x];
 
-				//If the tile is a floor tile at lest 5 tiles away from the up staircase then it has a chance
+				//If the tile is a floor tile at least 5 tiles away from other staircases then it has a chance
 				//of becoming a down staircase
 				if(
-					this.data[y][x] === 5 &&
+					this.data[y][x] === tiles.space &&
 					this.PRNG.next() < stairCarveChance &&
-					Math.hypot((this.stairs[0].p % this.w) - x, (this.stairs[0].p / this.w << 0) - y) >= 5
+					//This works like a bunch of conditions chained together with &&, if a single staircase is too
+					//close and returns false, the tile is invalidated
+					this.stairs.map(
+						stair => Math.hypot(
+							(stair.pos % this.w) - x,
+							(stair.pos / this.w << 0) - y
+						) >= minStairDistance
+					).indexOf(false) === -1
 				) {
-					this.stairs.push({p: this.sPos(x, y), tile: 3});
-					this.data[y][x] = 3;
+					this.stairs.push({pos: this.sPos(x, y), tile: tiles.stair_down});
+					this.data[y][x] = tiles.stair_down;
 				}
-
-				if(this.stairs[0].p === this.sPos(x, y))
-					this.data[y][x] = this.stairs[0].tile;
 
 			}
 		}
 
-
-		//Start game! Wooot!
-		this.generated = true;
-		if(this.tilesetLoaded)
-			this.start();
+		//Add an upward staircase
+		let triedTiles = [];
+		while(true) {
+			let x = PRNG.srng(this.w);
+			let y = PRNG.srng(this.h);
+			if(this.data[y][x] === tiles.space) {
+				this.stairs.push({pos: this.sPos(x, y), tile: tiles.stair_up});
+				this.data[y][x] = tiles.stair_up;
+				break;
+			}
+		}
 
 	}
 
@@ -515,8 +571,7 @@ class Map {
 	}
 
 	isWalkable (x, y) {
-		if(x < 0 || y < 0) return false;
-		if(x >= this.w || y >= this.h) return false;
+		if(this.outOfBounds(x, y)) return false;
 
 		if(this.isCollidableTile(this.data[y][x])) return false;
 
@@ -532,7 +587,14 @@ class Map {
 	}
 
 	isCollidableTile (tile) {
-		return tile < 2;
+		return tile === tiles.wall;
+	}
+
+	outOfBounds (x, y) {
+		if(x < 0 || y < 0) return true;
+		if(x >= this.w || y >= this.h) return true;
+
+		return false;
 	}
 
 }

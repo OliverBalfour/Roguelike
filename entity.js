@@ -6,6 +6,9 @@ class Entity {
 		this.y = 0;
 		this.ctx = ctx;
 		this.map = map;
+		//Amount of tiles in each direction the entity can see
+		this.fov = 1;
+		//Tiles the entity is actively seeing
 		this.visible = [];
 	}
 
@@ -85,31 +88,16 @@ class Player extends Entity {
 
 		this.visible = [];
 
-		this.map.visible[this.y][this.x] = true;
-		this.visible.push(this.map.sPos(this.x, this.y));
+		for(let y = 0; y < this.fov * 2 + 1; y++) {
+			for(let x = 0; x < this.fov * 2 + 1; x++) {
+				if(this.map.outOfBounds(this.x - this.fov + x, this.y - this.fov + y)) continue;
+				this.map.visible[this.y - this.fov + y][this.x - this.fov + x] = true;
+				this.visible.push(this.map.sPos(this.x - this.fov + x, this.y - this.fov + y));
+			}
+		}
 
-		this.map.visible[this.y + 1][this.x] = true;
-		this.visible.push(this.map.sPos(this.x, this.y + 1));
-		this.map.visible[this.y][this.x + 1] = true;
-		this.visible.push(this.map.sPos(this.x + 1, this.y));
-
-		this.map.visible[this.y - 1][this.x] = true;
-		this.visible.push(this.map.sPos(this.x, this.y - 1));
-		this.map.visible[this.y][this.x - 1] = true;
-		this.visible.push(this.map.sPos(this.x - 1, this.y));
-
-		this.map.visible[this.y + 1][this.x + 1] = true;
-		this.visible.push(this.map.sPos(this.x + 1, this.y + 1));
-		this.map.visible[this.y - 1][this.x - 1] = true;
-		this.visible.push(this.map.sPos(this.x - 1, this.y - 1));
-
-		this.map.visible[this.y + 1][this.x - 1] = true;
-		this.visible.push(this.map.sPos(this.x - 1, this.y + 1));
-		this.map.visible[this.y - 1][this.x + 1] = true;
-		this.visible.push(this.map.sPos(this.x + 1, this.y - 1));
-
-		//Update only the part of the map the player moved into and out of
-		this.map.patch(mapctx, this.x - 2, this.y - 2, 5, 5);
+		//Update only the part of the map the player moved into and out of, with a border of 1 tile
+		this.map.patch(mapctx, this.x - this.fov - 1, this.y - this.fov - 1, this.fov * 2 + 3, this.fov * 2 + 3);
 
 	}
 

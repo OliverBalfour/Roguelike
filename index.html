@@ -3,7 +3,14 @@
 	<head>
 		<title>Roguelike</title>
 		<meta charset='UTF-8' />
+
 		<style>
+
+			* {
+				color: white;
+				font-family: "Courier New", Courier, monospace;
+			}
+
 			#canvas {
 				position: absolute;
 				top: 0;
@@ -11,16 +18,24 @@
 				height: 100%;
 				width: 100%;
 				background: black;
+				z-index: -1;
 			}
+
 		</style>
 	</head>
+
 	<body>
+
 		<canvas id='canvas'></canvas>
+
+		<p style='cursor: pointer' onclick="this.style.display = 'none'; loop()">[ Play ]</p>
+
 		<script src='constants.js'></script>
 		<script src='prng.js'></script>
 		<script src='entity.js'></script>
 		<script src='map.js'></script>
 		<script src='worldtree.js'></script>
 		<script src='index.js'></script>
+
 	</body>
 </html>

@@ -46,7 +46,7 @@ class YgNode {
 	constructor (level, seed, settings) {
 		this.level = level;
 		this.settings = settings;
-		this.settings.seed = seed;
+		//this.settings.seed = seed;
 		this.changes = [];
 		this.parents = [];
 		this.children = [];
@@ -61,13 +61,13 @@ class YgNode {
 	}
 
 	extrapolateConnectors (map) {
-		for(let y = 0; y < map.h) {
+		for(let y = 0; y < map.h; y++) {
 			for(let x = 0; x < this.w; x++) {
 				if(map.data[y][x] === tiles.stair_down) {
 					this.addChild(new YgConnector(this, 'stair', {px: x, py: y}));
 
 
-				// } else if(map.data[y][x] === tiles.stair_up) {
+				}// else if(map.data[y][x] === tiles.stair_up) {
 				// 	this.addParent(new YgConnector(this, 'stair', {px: x, py: y}));
 				// }
 			}

@@ -37,7 +37,7 @@ class PRNG {
 		return this.params.Z / this.params.M;
 	}
 
-	//Returns the next float as a  pseudorandom whole number
+	//Returns the next float as a pseudorandom whole number
 	rng (n) {
 		return Math.floor(this.next() * n);
 	}
@@ -47,13 +47,16 @@ class PRNG {
 		return Math.floor(this.next() * (max - min)) + min;
 	}
 
-	//Returns the next float as a  pseudorandom whole number
-	static rng (n) {
+	//ES6 static class methods can be named the same as instance methods, but to differentiate
+	//the static functions are prefixed with 's'
+
+	//Static Math.random() seeded version of this class's method
+	static srng (n) {
 		return Math.floor(Math.random() * n);
 	}
 
-	//Returns the next float as a pseudorandom whole number in a range min-max
-	static range (min, max) {
+	//Static Math.random() seeded version of this class's method
+	static srange (min, max) {
 		return Math.floor(Math.random() * (max - min)) + min;
 	}
 

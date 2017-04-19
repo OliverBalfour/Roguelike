@@ -60,7 +60,7 @@ const loop = () => {
 	}
 
 	for(i in client.keys){
-		//For some reason the index is passed as a string... WTF JavaScript?!
+		//For some reason the keycode is passed as a string... WTF JavaScript?!
 		i = parseInt(i);
 		if(client.keys[i] !== false){
 			client.keys[i] += time.delta;
@@ -108,7 +108,7 @@ const time = {
 
 const WorldTree = new Yggdrasil();
 
-const map = new Map(WorldTree, ctx, mapctx, 42 * 2 + 1, 42 * 2 + 1, loop);
+const map = new Map(WorldTree, ctx, mapctx, 42 * 2 + 1, 42 * 2 + 1);
 
 mapc.width = map.w * map.dw;
 mapc.height = map.h * map.dh;
@@ -116,17 +116,21 @@ mapc.height = map.h * map.dh;
 
 //Full on mazed up map with a load of rooms everywhere.
 const mapGenSettings = {
-	minRoomSize: 5,
-	maxRoomsSize: 13,
-	minRooms: 20,
-	maxRooms: 25,
-	connectorOpenChance: 10,
-	numDeadEnds: 100000
+	rooms: {
+		minRoomSize: 5,
+		maxRoomSize: 13,
+		minRooms: 20,
+		maxRooms: 25
+	},
+	corridoors: 'maze',
+	numDeadEnds: 100000,
+	connectorOpenChance: 0.1
 };
+
 map.generate(mapGenSettings);
 
-WorldTree.tree = new YgNode(null, map.stairs, map.seed, mapGenSettings);
-WorldTree.currentNode - WorldTree.tree;
+//WorldTree.tree = new YgNode(null, map.stairs, map.seed, mapGenSettings);
+//WorldTree.currentNode - WorldTree.tree;
 
 /*
 //Less mazelike map with long windy corridoors going between a small amount of rooms
