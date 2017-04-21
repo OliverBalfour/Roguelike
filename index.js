@@ -74,16 +74,13 @@ const loop = () => {
 	map.draw();
 	map.player.draw();
 
-	//Red guide dot in the middle of the screen
-	//ctx.fillStyle = 'red';
-	//ctx.fillRect(w / 2 - 1, h / 2 - 1, 2, 2);
-
 	//FPS
+	let text = Math.floor(1000 / time.delta) + ' fps, ' + Math.floor(time.fps) + ' stable, level ' + WorldTree.level;
 	ctx.fillStyle = 'black';
-	ctx.fillRect(0, 0, 120, 30);
+	ctx.fillRect(0, 0, ctx.measureText(text).width + 20, 30);
 	ctx.font = '12px verdana';
 	ctx.fillStyle = 'white';
-	ctx.fillText(Math.floor(1000 / time.delta) + ' fps, ' + Math.floor(time.fps) + ' stable, level ' + WorldTree.level, 10, 20);
+	ctx.fillText(text, 10, 20);
 
 }
 
@@ -108,14 +105,13 @@ const time = {
 
 const WorldTree = new Yggdrasil();
 
-const map = new Map(WorldTree, ctx, mapctx, 42 * 2 + 1, 42 * 2 + 1);
-
-mapc.width = map.w * map.dw;
-mapc.height = map.h * map.dh;
+const map = new Map(WorldTree, ctx, mapctx);
 
 
 //Full on mazed up map with a load of rooms everywhere.
 const mapGenSettings = {
+	w: 42 * 2 + 1,
+	h: 42 * 2 + 1,
 	rooms: {
 		minRoomSize: 5,
 		maxRoomSize: 13,
@@ -127,10 +123,10 @@ const mapGenSettings = {
 	connectorOpenChance: 0.1
 };
 
-map.generate(mapGenSettings);
-
-//WorldTree.tree = new YgNode(null, map.stairs, map.seed, mapGenSettings);
-//WorldTree.currentNode - WorldTree.tree;
+map.generate(WorldTree.current.settings);
+WorldTree.current.extrapolateConnectors(map);
+map.player.updateMapVisibility();
+map.player.center();
 
 /*
 //Less mazelike map with long windy corridoors going between a small amount of rooms

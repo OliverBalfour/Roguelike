@@ -13,13 +13,61 @@ class Yggdrasil {
 	
 	constructor () {
 
-		this.current = new YgNode(0, 0, null);
+		this.root = new YgNode(null, 0, {
+			generate: false,
+			spawn: 12,
+			data: [
+				[0,0,0,0,0],
+				[0,5,5,5,0],
+				[0,5,3,5,0],
+				[0,5,5,5,0],
+				[0,0,0,0,0]
+			]
+		});
+
+		this.current = this.root;
+
+		this.nodes = [this.root];
 
 		this.level = 0;
 
-		//2D fragmented array, one array per depth level
-		this.nodes = [[this.current]];
+	}
 
+	up (map, x, y) {
+		let parentCon = this.current.parents.filter(seg => seg.cx === x && seg.cy === y)[0];
+
+		this.current = parentCon.parent;
+		this.level--;
+		map.generate(this.current.settings);
+
+		map.player.x = parentCon.px;
+		map.player.y = parentCon.py;
+
+		map.player.updateMapVisibility();
+		map.player.center();
+	}
+
+	down (map, x, y) {
+		let childCon = this.current.children.filter(seg => seg.px === x && seg.py === y)[0];
+
+		if(!childCon.child) {
+			childCon.child = new YgNode(childCon, this.level + 1, mapGenSettings, Math.random());
+			this.nodes.push(childCon.child);
+			this.current = childCon.child;
+			this.level++;
+			map.generate(this.current.settings);
+			this.current.extrapolateConnectors(map);
+		} else {
+			this.current = childCon.child;
+			this.level++;
+			map.generate(this.current.settings);
+		}
+
+		map.player.x = childCon.cx;
+		map.player.y = childCon.cy;
+
+		map.player.updateMapVisibility();
+		map.player.center();
 	}
 
 }
@@ -32,44 +80,35 @@ class YgConnector {
 		this.parent.children.push(this);
 		this.type = type;
 		if(this.type === 'stair') {
-			this.parentX = data.px;
-			this.parentY = data.py;
+			this.px = data.px;
+			this.py = data.py;
 		}
 	}
-
-	loadChild () {}
 
 }
 
 class YgNode {
 
-	constructor (level, seed, settings) {
+	constructor (parent, level, settings, seed) {
 		this.level = level;
-		this.settings = settings;
-		//this.settings.seed = seed;
+		this.settings = JSON.parse(JSON.stringify(settings));
+		this.settings.seed = seed || this.settings.seed || Math.random();
 		this.changes = [];
-		this.parents = [];
+		this.parents = parent ? [parent] : [];
 		this.children = [];
 	}
 
-	addParent (connector) {
-		this.parents.push(connector);
-	}
-
-	addChild (connector) {
-		this.children.push(connector);
-	}
-
 	extrapolateConnectors (map) {
+		let parentNo = 0;
 		for(let y = 0; y < map.h; y++) {
-			for(let x = 0; x < this.w; x++) {
+			for(let x = 0; x < map.w; x++) {
 				if(map.data[y][x] === tiles.stair_down) {
-					this.addChild(new YgConnector(this, 'stair', {px: x, py: y}));
-
-
-				}// else if(map.data[y][x] === tiles.stair_up) {
-				// 	this.addParent(new YgConnector(this, 'stair', {px: x, py: y}));
-				// }
+					new YgConnector(this, 'stair', {px: x, py: y});
+				} else if(map.data[y][x] === tiles.stair_up) {
+					this.parents[parentNo].cx = x;
+					this.parents[parentNo].cy = y;
+					parentNo++;
+				}
 			}
 		}
 	}

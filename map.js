@@ -25,14 +25,13 @@ class Map {
 		this.dh = 16;
 
 		//Map size
-		this.w = w;
-		this.h = h;
+		this.w = w || 1;
+		this.h = h || 1;
 
 
 		//Tileset
 		this.tileset = new Image();
 		this.tileset.src = 'test.png';
-		this.tilesetLoaded = false;
 
 		//Map core
 
@@ -61,6 +60,7 @@ class Map {
 	 *   bool generate*, generate the map? default true
 	 *   if !generate:
 	 *     2D array data, map data to replace the map with
+	 *     sPos spawn, player spawn position
 	 *   else:
 	 *     int w, map width
 	 *     int h, map height
@@ -78,7 +78,7 @@ class Map {
 	 *     float minStairDistance, the closest a staircase can be to another in tiles
 	 */
 
-	generate (options) {
+	generate (options, seed) {
 
 		options = typeof options === 'object' ? options : {};
 
@@ -86,16 +86,17 @@ class Map {
 		if(options.generate === false) {
 			this.w = options.data[0].length;
 			this.h = options.data.length;
-			this.data = options.data;
-			return;
 		}
 
 		//Map dimensions
 		this.w = typeof options.w === 'number' ? options.w : this.w;
 		this.h = typeof options.h === 'number' ? options.h : this.h;
 
+		this.mapctx.canvas.width = this.w * this.dw;
+		this.mapctx.canvas.height = this.h * this.dh;
+
 		//Map randomness source
-		this.seed = typeof options.seed === 'number' ? options.seed : Math.random();
+		this.seed = typeof seed === 'number' ? seed : (typeof options.seed === 'number' ? options.seed : Math.random());
 		this.PRNG = new PRNG(this.seed);
 
 		//Initialise this.data and this.visible
@@ -113,6 +114,16 @@ class Map {
 			}
 		}
 
+		//We don't need the rest if we're just overwriting
+		if(options.generate === false) {
+			this.data = options.data.slice(0);
+			this.player.x = options.spawn % this.w;
+			this.player.y = options.spawn / this.w >> 0;
+			this.player.updateMapVisibility();
+			this.player.center();
+			return;
+		}
+
 		//Region ids array to track when to stop overwriting regions
 		this.originalRegions = [];
 
@@ -126,19 +137,9 @@ class Map {
 
 		this.removeDeadEnds(options);
 
-		//Set up a spawn point in the level
-		if(options.rooms) {
-			let startRoom = this.rooms[PRNG.srng(this.rooms.length)];
-			this.player.x = startRoom.x + PRNG.srng(startRoom.w);
-			this.player.y = startRoom.y + PRNG.srng(startRoom.h);
-		}
-
 		this.buildMapData(options);
 
 		this.addStaircases(options);
-
-		this.player.updateMapVisibility();
-		this.player.center();
 
 	}
 
@@ -471,6 +472,7 @@ class Map {
 	addStaircases (options) {
 
 		//Add a few downward staircases
+		this.stairs = [];
 
 		let stairCarveChance = typeof options.stairCarveChance === 'number' ? options.stairCarveChance : 0.0015;
 		let minStairDistance = typeof options.minStairDistance === 'number' ? options.minStairDistance : 5;
@@ -504,8 +506,10 @@ class Map {
 		//Add an upward staircase
 		let triedTiles = [];
 		while(true) {
-			let x = PRNG.srng(this.w);
-			let y = PRNG.srng(this.h);
+			let x = this.PRNG.rng(this.w);
+			let y = this.PRNG.rng(this.h);
+			if(triedTiles.indexOf(this.sPos(x, y)) !== -1) continue;
+			triedTiles.push(this.sPos(x, y));
 			if(this.data[y][x] === tiles.space) {
 				this.stairs.push({pos: this.sPos(x, y), tile: tiles.stair_up});
 				this.data[y][x] = tiles.stair_up;
@@ -543,7 +547,7 @@ class Map {
 		for(let y = sy; y < sy + ph; y++) {
 			for(let x = sx; x < sx + pw; x++) {
 
-				if(!this.visible[y] || !this.visible[y][x]) continue;
+				if(!this.visible[y] || !this.visible[y][x] || this.outOfBounds(x, y)) continue;
 
 				//Draw the tile
 				ctx.drawImage(
